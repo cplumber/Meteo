@@ -893,14 +893,5 @@ void checkSerialInput() {
   }
 }
 
-void serveHTML() {  // <-- New function
-  File htmlFile = SPIFFS.open(htmlFilePath, "r"); // <-- File is now defined
-  if (htmlFile) {
-      server.streamFile(htmlFile, "text/html"); // <-- Streams the file content
-      htmlFile.close();
-  } else {
-      server.send(404, "text/plain", "File Not Found");
-  }
-}
 
 

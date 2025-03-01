@@ -21,4 +21,3 @@ void publishSensorData(String sensor, float value, int numDecimals);
 void messageReceived(String &topic, String &payload);
 void connectMQTT();
 void checkSerialInput();
-void serveHTML();
