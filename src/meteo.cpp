@@ -1,4 +1,4 @@
-#include <Arduino.h>      
+#include <Arduino.h>
 #include <WiFi.h>         // Сначала Wi-Fi, так как он зависит от сетевого стека
 #include <WiFiUdp.h>      // Затем UDP для NTP (работает с Wi-Fi)
 #include <NTPClient.h>    // NTP клиент (зависит от WiFi и WiFiUdp)
@@ -7,9 +7,11 @@
 #include <Preferences.h>  // EEPROM-like хранилище 
 #include <SensirionI2cScd4x.h>  
 #include <Adafruit_BME280.h>
+
 #include <TFT_eSPI.h>     // Дисплей (работает с SPI, но не зависит от I2C)
-#include <MQTT.h>         
+#include <MQTT.h>
 #include "Free_Fonts.h"   // Кастомные шрифты для TFT (не содержит кода)
+#include "meteo.h"
 
 // Для создания библиотеки из изображения: 
 // Сгенерировать файл с изображением https://notisrac.github.io/FileToCArray/
@@ -166,6 +168,7 @@ int time_offset; // смещение времени (UTC + 2ч) в минута�
 
 Preferences prefs;
 WebServer server(80);
+void loadSettings();
 
 void setup() {
   Serial.begin(115200);   // Инициализация серийного порта
@@ -462,7 +465,12 @@ void addToHistory(int avgTemp, int avgHum, int avgPres, int avgAirQ) {
       if (histogramData[i].airQuality > maxAirQ) maxAirQ = histogramData[i].airQuality;
     }
     // Вставляем новое значение в начало массива
-    histogramData[0] = {avgTemp, avgHum, avgPres, avgAirQ};
+    histogramData[0] = {
+      static_cast<short int>(avgTemp),
+      static_cast<short int>(avgHum),
+      static_cast<short int>(avgPres),
+      static_cast<short int>(avgAirQ)
+  };
 }
 
 // Функция проверки соединения WiFi и попыток переподключиться
