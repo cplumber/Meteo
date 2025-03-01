@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html style="font-family: sans-serif;">
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script>
+            // Fetch settings and populate form fields
+            function fetchSettings() {
+                fetch('/api/settings')
+                    .then(response => response.json())
+                    .then(settings => {
+                        document.getElementById('wifi_ssid').value = settings.wifi_ssid;
+                        document.getElementById('wifi_password').value = settings.wifi_password;
+                        document.getElementById('mqtt_server').value = settings.mqtt_server;
+                        document.getElementById('mqtt_port').value = settings.mqtt_port;
+                        document.getElementById('mqtt_username').value = settings.mqtt_username;
+                        document.getElementById('mqtt_password').value = settings.mqtt_password;
+                        document.getElementById('interval_MQTT').value = settings.interval_MQTT;
+                        document.getElementById('ThresholdTemp').value = settings.ThresholdTemp;
+                        document.getElementById('ThresholdHumidity').value = settings.ThresholdHumidity;
+                        document.getElementById('ThresholdPressure').value = settings.ThresholdPressure;
+                        document.getElementById('ThresholdAirQuality').value = settings.ThresholdAirQuality;
+                        document.getElementById('time_offset').value = settings.time_offset;
+                        document.getElementById('interval_graph').value = settings.interval_graph;
+    
+                        // Set radio button for display orientation
+                        document.querySelector(`input[name="dispRot"][value="${settings.dispRot}"]`).checked = true;
+                    })
+                    .catch(err => console.error('Error fetching settings:', err));
+            }
+    
+            // Fetch settings when page loads
+            window.onload = function () {
+                fetchSettings();
+            };
+        </script>
+    </head>
+    
+<body>
+    <h2>Welcome to the GIA-Meteo configuration page</h2>
+    <hr>
+    <form action="/save" method="POST" autocomplete="off">
+        <table>
+            <tr><td colspan="2" style="text-align:center;font-weight:bold;padding-top:10px;">Wi-Fi Settings</td></tr>
+            <tr><td>SSID:</td><td><input type="text" id="wifi_ssid" name="wifi_ssid"></td></tr>
+            <tr><td>Password:</td><td><input type="password" id="wifi_password" name="wifi_password" autocomplete="off"></td></tr>
+            
+            <tr><td colspan="2" style="padding-top:10px;"></td></tr>
+            <tr><td colspan="2" style="text-align:center;font-weight:bold;padding-top:10px;">MQTT Settings</td></tr>
+            <tr><td>Server IP:</td><td><input type="text" id="mqtt_server" name="mqtt_server"></td></tr>
+            <tr><td>Port:</td><td><input type="number" id="mqtt_port" name="mqtt_port"></td></tr>
+            <tr><td>User:</td><td><input type="text" id="mqtt_username" name="mqtt_username"></td></tr>
+            <tr><td>Password:</td><td><input type="password" id="mqtt_password" name="mqtt_password"></td></tr>
+            <tr><td>Sending interval, min:</td><td><input type="text" id="interval_MQTT" name="interval_MQTT"></td></tr>
+            
+            <tr><td colspan="2" style="padding-top:10px;"></td></tr>
+            <tr><td colspan="2" style="text-align:center;font-weight:bold;padding-top:10px;">Thresholds for MQTT Data Transmission</td></tr>
+            <tr><td>Temperature Threshold (&deg;C)</td><td><input type="number" step="0.01" name="ThresholdTemp" value="{{ThresholdTemp}}"></td></tr>
+            <tr><td>Humidity Threshold (%)</td><td><input type="number" step="0.01" name="ThresholdHumidity" value="{{ThresholdHumidity}}"></td></tr>
+            <tr><td>Pressure Threshold (hPa)</td><td><input type="number" step="0.01" name="ThresholdPressure" value="{{ThresholdPressure}}"></td></tr>
+            <tr><td>CO&#8322; Threshold (ppm)</td><td><input type="number" step="0.01" name="ThresholdAirQuality" value="{{ThresholdAirQuality}}"></td></tr>
+
+            <tr><td colspan="2" style="padding-top:10px;"></td></tr>
+            <tr><td colspan="2" style="text-align:center;font-weight:bold;padding-top:10px;">Other Settings</td></tr>
+            <tr><td>UTC time offset, min:</td><td><input type="text" id="time_offset" name="time_offset"></td></tr>
+            <tr><td>Graph, sec for point:</td><td><input type="text" id="interval_graph" name="interval_graph"></td></tr>
+            
+            <tr><td>Orientation</td>
+                <td>
+                    <div style="display: flex; flex-direction: column; align-items: stretch;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: -1px;">
+                            <div>&nbsp;<input type="radio" name="dispRot" value="1" {{dispRot == 1 ? "checked" : ""}}></div>
+                            <div><input type="radio" name="dispRot" value="3" {{dispRot == 3 ? "checked" : ""}}>&nbsp;</div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: -1px;">
+                            <div>&#9608;&#9608;&#9608;&#9754;</div><div>&#9755;&#9608;&#9608;&#9608;</div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+
+            <tr><td colspan="2" style="text-align:center;padding-top:10px;"><input type="submit" value="Upload and reboot"></td></tr>
+        </table>
+    </form>
+</body>
+</html>

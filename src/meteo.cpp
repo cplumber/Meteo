@@ -8,10 +8,15 @@
 #include <SensirionI2cScd4x.h>  
 #include <Adafruit_BME280.h>
 
+#include <FS.h>           // <-- Add this at the top of the file for SPIFFS
+#include <SPIFFS.h>       // <-- Add this for SPIFFS support
+
 #include <TFT_eSPI.h>     // Дисплей (работает с SPI, но не зависит от I2C)
 #include <MQTT.h>
+
 #include "Free_Fonts.h"   // Кастомные шрифты для TFT (не содержит кода)
 #include "meteo.h"
+
 
 // Для создания библиотеки из изображения: 
 // Сгенерировать файл с изображением https://notisrac.github.io/FileToCArray/
@@ -168,7 +173,8 @@ int time_offset; // смещение времени (UTC + 2ч) в минута�
 
 Preferences prefs;
 WebServer server(80);
-void loadSettings();
+
+String htmlFilePath = "/index.html";  // <-- Define path to HTML file
 
 void setup() {
   Serial.begin(115200);   // Инициализация серийного порта
@@ -245,6 +251,37 @@ void setup() {
 
   publishDeviceDiscovery();      // Отправка конфигурации сенсоров
   mqttFail = !client.connected(); // флаг для отображения статуса - проверка статуса подключения  
+  if (!SPIFFS.begin()) {  // <-- Add this to ensure SPIFFS is ready
+    Serial.println("Failed to mount file system");
+    return;
+  }
+ 
+  server.on("/api/weather", HTTP_GET, [](){
+    String jsonResponse = "{\"temperature\": " + String(currentTemperature) + 
+                          ", \"humidity\": " + String(currentHumidity) + 
+                          ", \"pressure\": " + String(currentPressure) + 
+                          ", \"air_quality\": " + String(currentAirQuality) + "}";
+    server.send(200, "application/json", jsonResponse);  // <-- Send JSON response
+  });
+
+    server.on("/api/settings", HTTP_GET, [](){
+      String jsonResponse = "{\"wifi_ssid\": \"" + wifi_ssid +
+                            "\", \"wifi_password\": \"" + wifi_password +
+                            "\", \"mqtt_server\": \"" + mqtt_server +
+                            "\", \"mqtt_port\": " + String(mqtt_port) +
+                            ", \"mqtt_username\": \"" + mqtt_username +
+                            "\", \"mqtt_password\": \"" + mqtt_password +
+                            "\", \"interval_MQTT\": " + String(interval_MQTT) +
+                            ", \"ThresholdTemp\": " + String(ThresholdTemp) +
+                            ", \"ThresholdHumidity\": " + String(ThresholdHumidity) +
+                            ", \"ThresholdPressure\": " + String(ThresholdPressure) +
+                            ", \"ThresholdAirQuality\": " + String(ThresholdAirQuality) +
+                            ", \"time_offset\": " + String(time_offset) +
+                            ", \"interval_graph\": " + String(interval_graph) +
+                            ", \"dispRot\": " + String(dispRot) + "}";
+
+      server.send(200, "application/json", jsonResponse);
+  });
 
   // Запуск веб-сервера
   server.on("/", HTTP_GET, handleRoot);
@@ -542,6 +579,8 @@ void showNetworks() {
       tft.drawString("AP mode. IP: " + WiFi.softAPIP().toString(), statusLine1x, statusLine1y);
       tft.drawString(String("SSID: ") + APSSID +", PW: " + APPassword, statusLine2x, statusLine2y);
     }
+    
+
 }
 
 void switchToAPMode() {
@@ -587,53 +626,32 @@ void drawGraph() {
     }
 }
 
-// функция формирования web-страницы
 void handleRoot() {
-String html = 
-  "<html style='font-family: sans-serif;'>\n"
-  "<head>\n"
-  "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n"
-  "</head>\n"
-  "<body>\n"
-  "<h2>Welcome to the GIA-Meteo configuration page</h2>\n"
-  "<hr>\n"
-  "<form action='/save' method='POST' autocomplete='off'>\n"
-  "<table>\n"
-  "<tr><td colspan='2' style='text-align:center;font-weight:bold;padding-top:10px;'>Wi-Fi Settings</td></tr>\n"
-  "<tr><td>SSID:</td><td><input type='text' name='wifi_ssid' placeholder=\"Wi-Fi Name\" value=\"" + wifi_ssid + "\"></td></tr>\n"
-  "<tr><td>Password:</td><td><input type='password' name='wifi_password' autocomplete=\"off\" value=\"" + wifi_password + "\"></td></tr>\n"
-  "<tr><td colspan='2' style='padding-top:10px;'></td></tr>\n"
-  "<tr><td colspan='2' style='text-align:center;font-weight:bold;padding-top:10px;'>MQTT Settings</td></tr>\n"
-  "<tr><td>Server IP:</td><td><input type='text' name='mqtt_server' placeholder=\"192.168.1.1\" value=\"" + mqtt_server + "\"></td></tr>\n"
-  "<tr><td>Port:</td><td><input type='number' name='mqtt_port' placeholder=\"1883\" value=\"" + String(mqtt_port) + "\"></td></tr>\n"
-  "<tr><td>User:</td><td><input type='text' name='mqtt_username' value=\"" + mqtt_username + "\"></td></tr>\n"
-  "<tr><td>Password:</td><td><input type='password' name='mqtt_password' autocomplete=\"off\" value=\"" + mqtt_password + "\"></td></tr>\n"
-  "<tr><td>Sending interval, min:</td><td><input type='text' name='interval_MQTT' value=\"" + String(interval_MQTT) + "\"></td></tr>\n"
-  "<tr><td colspan='2' style='text-align:center;font-weight:bold;padding-top:10px;'>Thresholds for MQTT Data Transmission</td></tr>\n"
-  "<tr><td>Temperature Threshold (&deg;C)</td><td><input type='number' step='0.01' name='ThresholdTemp' value='" + String(ThresholdTemp) + "'></td></tr>\n"
-  "<tr><td>Humidity Threshold (%)</td><td><input type='number' step='0.01' name='ThresholdHumidity' value='" + String(ThresholdHumidity) + "'></td></tr>\n"
-  "<tr><td>Pressure Threshold (hPa)</td><td><input type='number' step='0.01' name='ThresholdPressure' value='" + String(ThresholdPressure) + "'></td></tr>\n"
-  "<tr><td>CO&#8322; Threshold (ppm)</td><td><input type='number' step='0.01' name='ThresholdAirQuality' value='" + String(ThresholdAirQuality) + "'></td></tr>\n"
-  "<tr><td colspan='2' style='padding-top:10px;'></td></tr>\n"
-  "<tr><td colspan='2' style='text-align:center;font-weight:bold;padding-top:10px;'>Other Settings</td></tr>\n"
-  "<tr><td>UTC time offset, min:</td><td><input type='text' name='time_offset' value=\"" + String(time_offset) + "\"></td></tr>\n"
-  "<tr><td>Graph, sec for point:</td><td><input type='text' name='interval_graph' value=\"" + String(interval_graph) + "\"></td></tr>\n"
+  File htmlFile = SPIFFS.open("/index.html", "r");
+  if (htmlFile) {
+      String htmlContent = htmlFile.readString();
+      htmlFile.close();
 
-  "<tr><td>Orientation</td><td><div style='display: flex; flex-direction: column; align-items: stretch;'>\n"
-  "<div style='display: flex; justify-content: space-between; margin-bottom: -1px;'>\n"
-  "<div>&nbsp;<input type='radio' name='dispRot' value='1'" + String(dispRot == 1 ? "checked" : "") + "></div>\n"
-  "<div><input type='radio' name='dispRot' value='3'"+ String(dispRot == 3 ? "checked" : "") + ">&nbsp;</div></div>\n"
-  "<div style='display: flex; justify-content: space-between; margin-top: -1px;'>\n"
-  "<div>&#9608;&#9608;&#9608;&#9754;</div><div>&#9755;&#9608;&#9608;&#9608;</div>\n"
-  "</div></div></td></tr>\n"
+      // Inject actual values into the placeholders
+      htmlContent.replace("{{wifi_ssid}}", wifi_ssid);
+      htmlContent.replace("{{wifi_password}}", wifi_password);
+      htmlContent.replace("{{mqtt_server}}", mqtt_server);
+      htmlContent.replace("{{mqtt_port}}", String(mqtt_port));
+      htmlContent.replace("{{mqtt_username}}", mqtt_username);
+      htmlContent.replace("{{mqtt_password}}", mqtt_password);
+      htmlContent.replace("{{interval_MQTT}}", String(interval_MQTT));
+      htmlContent.replace("{{ThresholdTemp}}", String(ThresholdTemp));
+      htmlContent.replace("{{ThresholdHumidity}}", String(ThresholdHumidity));
+      htmlContent.replace("{{ThresholdPressure}}", String(ThresholdPressure));
+      htmlContent.replace("{{ThresholdAirQuality}}", String(ThresholdAirQuality));
+      htmlContent.replace("{{time_offset}}", String(time_offset));
+      htmlContent.replace("{{interval_graph}}", String(interval_graph));
+      htmlContent.replace("{{dispRot}}", String(dispRot));
 
-  "<tr><td colspan='2' style='text-align:center;padding-top:10px;'><input type='submit' value='Upload and reboot'></td></tr>\n"
-  "</table>\n"
-  "</form>\n"
-  "</body>\n"
-  "</html>";
-
-  server.send(200, "text/html", html);
+      server.send(200, "text/html", htmlContent);
+  } else {
+      server.send(404, "text/plain", "File Not Found");
+  }
 }
 
 // функция формирования обработки "update" web-страницы
@@ -874,3 +892,15 @@ void checkSerialInput() {
     }
   }
 }
+
+void serveHTML() {  // <-- New function
+  File htmlFile = SPIFFS.open(htmlFilePath, "r"); // <-- File is now defined
+  if (htmlFile) {
+      server.streamFile(htmlFile, "text/html"); // <-- Streams the file content
+      htmlFile.close();
+  } else {
+      server.send(404, "text/plain", "File Not Found");
+  }
+}
+
+
