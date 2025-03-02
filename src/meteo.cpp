@@ -5,8 +5,6 @@
 #include <WebServer.h>    // Web server using Wi-Fi
 #include <Wire.h>         // I2C (needed for sensors, displays, and memory)
 #include <Preferences.h>  // EEPROM-like storage 
-#include <SensirionI2cScd4x.h>  
-#include <Adafruit_BME280.h>
 
 #include <FS.h>       
 #include <SPIFFS.h>
@@ -15,6 +13,7 @@
 #include <MQTT.h>
 
 #include "Free_Fonts.h"   // Custom fonts for TFT (does not contain code)
+#include "sensor_manager.h"
 #include "meteo.h"
 
 
@@ -26,28 +25,9 @@
 // Data type uint16_t
 #include "template6.h"  // Generated image file
 
-// I2C bus pins
-#define SDA_PIN 27   
-#define SCL_PIN 22
-
-SensirionI2cScd4x scd4x;
-Adafruit_BME280 bme;
-
-static char errorMessage[64];
-static int16_t error;
-#define NO_ERROR 0
-
 // Variables for data
 String currentDate;
 String currentTime;
-float currentTemperature;
-float currentHumidity;
-float currentPressure;
-int currentAirQuality;
-
-// Variables for reading data from SCD40
-uint16_t co2;
-float scd_temp, scd_humidity;
 
 // Declaring a structure for arrays of historical data
 struct WeatherData {
@@ -222,17 +202,8 @@ void setup() {
   pinMode(backlightPin, OUTPUT);  // устанваливаем пин продсветки в режим выхода
   analogReadResolution(10);   // настраиваем вход для фоторезистора
   analogSetAttenuation(ADC_0db); // настройка чувствительности
-
-  Wire.begin(SDA_PIN, SCL_PIN); // I2C initialization
-
-  // SCD40 initialization
-  scd4x.begin(Wire, 0x62);
-  scd4x.startPeriodicMeasurement();
-
-  // BME280 initialization
-  if (!bme.begin(0x76)) {
-    Serial.println("Ошибка BME280!");
-  }
+  
+  initializeSensors(); 
 
   tft.begin();               // Screen initialization
   tft.setRotation(dispRot);  // Screen orientation
@@ -323,37 +294,9 @@ void loop() {
 
     checkWiFi();       // проверяем статус соединения WiFi, если не подключен, пытаемся переподключиться
     showNetworks();    // проверяем статусы wifi, ntp, mqtt и выводим сообщение на экран
-
-    // Читаем данные с датчиков
     
-    bool dataReady = false;
-    error = scd4x.getDataReadyStatus(dataReady);
-    if (error != NO_ERROR) {
-      Serial.print("Error trying to execute getDataReadyStatus(): ");
-      errorToString(error, errorMessage, sizeof errorMessage);
-      Serial.println(errorMessage);
-    }
-    while (!dataReady) {
-        delay(100);
-        error = scd4x.getDataReadyStatus(dataReady);
-        if (error != NO_ERROR) {
-            Serial.print("Error trying to execute getDataReadyStatus(): ");
-            errorToString(error, errorMessage, sizeof errorMessage);
-            Serial.println(errorMessage);
-        }
-    }
-
-    error = scd4x.readMeasurement(co2, scd_temp, scd_humidity);
-    if (error != NO_ERROR) {
-        Serial.print("Error trying to execute readMeasurement(): ");
-        errorToString(error, errorMessage, sizeof errorMessage);
-        Serial.println(errorMessage);
-    }
-    currentAirQuality = co2;
-    currentTemperature = bme.readTemperature();
-    currentHumidity = bme.readHumidity();
-    currentHumidity = (currentHumidity > 100 ? 100: currentHumidity);           // датчик может возвращать значения больше 100% 
-    currentPressure = bme.readPressure() / 100.0F; // hPa
+    readSensors();
+    
     sendMQTTData(currentMillis); // отправка данных по MQTT если необходимо 
 
     // Суммируем данные для вычисления средних значений и инкрементируем индекс
