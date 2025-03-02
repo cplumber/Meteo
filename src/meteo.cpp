@@ -1,32 +1,32 @@
 #include <Arduino.h>
-#include <WiFi.h>         // Сначала Wi-Fi, так как он зависит от сетевого стека
-#include <WiFiUdp.h>      // Затем UDP для NTP (работает с Wi-Fi)
-#include <NTPClient.h>    // NTP клиент (зависит от WiFi и WiFiUdp)
-#include <WebServer.h>    // Веб-сервер, использующий Wi-Fi
-#include <Wire.h>         // I2C (нужно для датчиков, дисплеев и памяти)
-#include <Preferences.h>  // EEPROM-like хранилище 
+#include <WiFi.h>         // First Wi-Fi, as it depends on the network stack
+#include <WiFiUdp.h>      // Then UDP for NTP (works with Wi-Fi)
+#include <NTPClient.h>    // NTP client (depends on WiFi and WiFiUdp)
+#include <WebServer.h>    // Web server using Wi-Fi
+#include <Wire.h>         // I2C (needed for sensors, displays, and memory)
+#include <Preferences.h>  // EEPROM-like storage 
 #include <SensirionI2cScd4x.h>  
 #include <Adafruit_BME280.h>
 
-#include <FS.h>           // <-- Add this at the top of the file for SPIFFS
-#include <SPIFFS.h>       // <-- Add this for SPIFFS support
+#include <FS.h>       
+#include <SPIFFS.h>
 
-#include <TFT_eSPI.h>     // Дисплей (работает с SPI, но не зависит от I2C)
+#include <TFT_eSPI.h>     // Display (works with SPI, but does not depend on I2C)
 #include <MQTT.h>
 
-#include "Free_Fonts.h"   // Кастомные шрифты для TFT (не содержит кода)
+#include "Free_Fonts.h"   // Custom fonts for TFT (does not contain code)
 #include "meteo.h"
 
 
-// Для создания библиотеки из изображения: 
-// Сгенерировать файл с изображением https://notisrac.github.io/FileToCArray/
+// To create a library from an image: 
+// Generate a file with an image using https://notisrac.github.io/FileToCArray/
 // Code format Hex (0x00)
-// Palette mod 16bit RRRRRGGGGGGBBBBB (2byte/pixel)
+// Palette mode 16-bit RRRRRGGGGGGBBBBB (2 bytes/pixel)
 // Endianness - Big-endian
 // Data type uint16_t
-#include "template6.h"  //  Сгенерированный файл с изображением
+#include "template6.h"  // Generated image file
 
-// Пины шины I2C
+// I2C bus pins
 #define SDA_PIN 27   
 #define SCL_PIN 22
 
@@ -37,7 +37,7 @@ static char errorMessage[64];
 static int16_t error;
 #define NO_ERROR 0
 
-// Переменные для данных
+// Variables for data
 String currentDate;
 String currentTime;
 float currentTemperature;
@@ -45,34 +45,34 @@ float currentHumidity;
 float currentPressure;
 int currentAirQuality;
 
-// переменные для чтения данных с SCD40
+// Variables for reading data from SCD40
 uint16_t co2;
 float scd_temp, scd_humidity;
 
-// объявляем структуру для массивов исторических данных
+// Declaring a structure for arrays of historical data
 struct WeatherData {
-  short int temperature;  // Температура
-  short int humidity;     // Влажность
-  short int pressure;     // Давление
+  short int temperature;  // Temperature
+  short int humidity;     // Humidity
+  short int pressure;     // Pressure
   short int airQuality;   // CO2
 };
 
-// Объявляем структуру для хранени координат вывода текста и графиков
+// Declaring a structure for storing coordinates for text and graph outputs
 struct UIElement {
-  int x;            // Координата X
-  int y;            // Координата Y
-  uint16_t fgColor; // цвет текста/графики
+  int x;            // X coordinate
+  int y;            // Y coordinate
+  uint16_t fgColor; // text/graphics color
 };
 
-// значение min и max для рассчета коэффицента масштабирования графика 
+// Min and max values for calculating graph scaling coefficients
 int minTemp, maxTemp;         
 int minHum, maxHum;
 int minPres, maxPres;
 int minAirQ, maxAirQ;
 
-const int backlightPin = 21;  // Пин подсветки
-const int sensorPin = 34;     // Пин фоторезистора
-int backlight;                // значение яркости экрана
+const int backlightPin = 21;  // Backlight pin
+const int sensorPin = 34;     // Photoresistor pin
+int backlight;                // Screen brightness value
 
 unsigned long previousMillisClock = 0;
 unsigned long previousMillisSensors = 0;
@@ -80,84 +80,84 @@ unsigned long previousMillisGraph = 0;
 unsigned long previousMillisMQTT = 0;
 unsigned long previousMillisNTP = 0;
 
-const long intervalClock = 1000;        // Интервал обновления показателей даты и времени на экране в миллисекундах (1 сек)
-const long intervalSensors = 5000;      // Интервал чтения датчиков и обновления показателей на экране в миллисекундах (5 сек)
-const long intervalNTP = 21600000;      // Интервал синхронизации времени с сервером NTP в миллисекундах (21600000 миллисекунд = 6 часов)
-const int HISTORY_SIZE = 96;            // Размер массива истории - 96 значений для 2 суток (по 30 минут)
-int interval_graph = 80;                // Интервал обновления графиков на экране в секундах
-int interval_MQTT = 1;                  // Интервал отправки информации по MQTT в минутах (2 мин = 120)
+const long intervalClock = 1000;        // Interval for updating date and time display in milliseconds (1 sec)
+const long intervalSensors = 5000;      // Interval for reading sensors and updating display values in milliseconds (5 sec)
+const long intervalNTP = 21600000;      // Interval for time synchronization with the NTP server in milliseconds (21600000 ms = 6 hours)
+const int HISTORY_SIZE = 96;            // History array size - 96 values for 2 days (every 30 minutes)
+int interval_graph = 80;                // Interval for updating graphs on the screen in seconds
+int interval_MQTT = 1;                  // Interval for sending MQTT data in minutes (2 min = 120)
 
-int dispRot = 3;         // ориентация дисплея: 1 - питание слева, 3- питание справа
+int dispRot = 3;         // Display orientation: 1 - power on the left, 3 - power on the right
 
-WeatherData histogramData[HISTORY_SIZE];     // Массив для хранения усредненных значений для гистограммы - 96 значений для 2 суток (по 30 минут)
+WeatherData histogramData[HISTORY_SIZE];     // Array for storing averaged values for histogram - 96 values for 2 days (every 30 minutes)
 
-// координаты для вывода текста на экран
+// Coordinates for displaying text on the screen
 UIElement tempText = {142, 40, 0xFEA0};   // sRGB: #FFD700
 UIElement humText  = {142, 84, 0xACF2};   // sRGB: #A89C94
 UIElement presText = {142, 128, 0xFAA4};  // sRGB: #FF5722
 UIElement airText  = {142, 172, 0xFA20};  // sRGB: #FF4500
 
-// координаты для вывода графиков на экран
+// Coordinates for displaying graphs on the screen
 UIElement tempGraph = {210, 73, 0xFEA0};
 UIElement humGraph  = {210, 117, 0xACF2};
 UIElement presGraph = {210, 161, 0xFAA4};
 UIElement airGraph  = {210, 205, 0xFA20};
 
-// Координаты для строк статусов
+// Coordinates for status lines
 const int statusLine1x = 2;
 const int statusLine1y = 215;
 const int statusLine2x = 2;
 const int statusLine2y = 228;
 
-// Цвета состояний в строке статуса
+// Status line state colors
 const uint16_t colorOK = 0x528A;
 const uint16_t colorLost = 0xFFE0;
 
-const int GRAPH_HEIGHT = 30;        // Высота для всех графиков
+const int GRAPH_HEIGHT = 30;        // Height for all graphs
 
-int ntpFailCount = 0;         // Счетчик неудач подключения к NTP
-const int ntpMaxFails = 6;    // Количество попыток подключиться к NTP, после чего скрыть часы после 6 неудач (3 часа), попытки подключения продолжаются
-bool showClock = false;       // Флаг показа часов
-bool mqttFail;                // Флаг неудачи подключения к MQTT
-int wifiFailCount = 0;        // Счетчик неудач подключения к WiFi
-const int wifiMaxFails = 9;   // Количество попыток подключиться к WiFi, после чего запускать AP
-bool apModeActive = false;    // false - режим подключения к WiFi, true - режим точки доступа
+int ntpFailCount = 0;         // NTP connection failure counter
+const int ntpMaxFails = 6;    // Number of attempts to connect to NTP before hiding the clock after 6 failures (3 hours), attempts continue
+bool showClock = false;       // Clock display flag
+bool mqttFail;                // MQTT connection failure flag
+int wifiFailCount = 0;        // WiFi connection failure counter
+const int wifiMaxFails = 9;   // Number of attempts to connect to WiFi before enabling AP mode
+bool apModeActive = false;    // false - WiFi connection mode, true - access point mode
 
-// Определяем глобальные цвета
-uint16_t bgColor = 0x001;      // Цвет фона
+// Defining global colors
+uint16_t bgColor = 0x001;      // Background color
 
-int currentIndexAvg = 0;       // Индекс для накопления количества элементов для получения средних значений
+int currentIndexAvg = 0;       // Index for accumulating elements to obtain average values
 
-// Переменные для накопления данных за 30 минут (сырые данные) для последующего деления на currentIndexAvg для получения средних значений
+// Variables for accumulating raw data over 30 minutes for averaging
 long sumTemperature = 0;
 long sumHumidity = 0;
 long sumPressure = 0;
 long sumAirQuality = 0;
 
-unsigned long lastForceSendMQTT = 0;   // Время последней принудительной отправки по MQTT
+unsigned long lastForceSendMQTT = 0;   // Time of last forced MQTT transmission
 
-// Предыдущие значения датчиков для сравнения с текущими для отправки по MQTT
+// Previous sensor values for comparison before sending via MQTT
 float lastTemp = -1000;
 float lastHumidity = -1000;
 float lastPressure = -1000;
 float lastAirQuality = -1000;
 
-// Пороги изменений показателй (в абсолютных значениях) для внеочередой отправки по MQTT
+// Thresholds for value changes (absolute values) to trigger immediate MQTT transmission
 float ThresholdTemp;
 float ThresholdHumidity;
 float ThresholdPressure;
 float ThresholdAirQuality;
 
-// Настройка экрана
+// Screen setup
 TFT_eSPI tft = TFT_eSPI();
 
-// Настройка Wi-Fi
-String wifi_ssid = "gia-kingdom-wi-fi";  // Имя Wi-Fi сети
-String wifi_password = "a1b2c3d4e5";     // Пароль Wi-Fi
-const char* APSSID = "gia-meteo";        // SSID точки доступа
-const char* APPassword = "12348765";     // Пароль для точки доступа
+// Wi-Fi setup
+String wifi_ssid = "gia-kingdom-wi-fi";  // Wi-Fi network name
+String wifi_password = "a1b2c3d4e5";     // Wi-Fi password
+const char* APSSID = "gia-meteo";        // Access Point SSID
+const char* APPassword = "12348765";     // Access Point password
 
-// Настройка MQTT
+// MQTT setup
 String mqtt_server;
 int mqtt_port;
 String mqtt_username;
@@ -166,10 +166,10 @@ String mqtt_password;
 WiFiClient net;
 MQTTClient client;
 
-// Настройка NTP
+// NTP setup
 WiFiUDP udp;
-NTPClient timeClient(udp, "pool.time.in.ua"); // NTP сервер 
-int time_offset; // смещение времени (UTC + 2ч) в минутах (в функцию передавать в секундах)
+NTPClient timeClient(udp, "pool.time.in.ua"); // NTP server 
+int time_offset; // Time offset (UTC +2h) in minutes (must be passed in seconds)
 
 Preferences prefs;
 WebServer server(80);
@@ -177,16 +177,16 @@ WebServer server(80);
 String htmlFilePath = "/index.html";  // <-- Define path to HTML file
 
 void setup() {
-  Serial.begin(115200);   // Инициализация серийного порта
-  loadSettings();         // загружаем переменные из энергонезависимой памяти
+  Serial.begin(115200);   // Serial port initialization
+  loadSettings();         // Load variables from non-volatile memory
   apModeActive = false;
   
   delay (500);
   WiFi.disconnect(true, true);
   WiFi.softAPdisconnect(true);
-  WiFi.mode(WIFI_MODE_STA); // Режим точки доступа
+  WiFi.mode(WIFI_MODE_STA); // Access point mode
   
-  // Попытка подключения к Wi-Fi, если данные есть
+  // Attempt to connect to Wi-Fi if credentials are available
   Serial.print("Connecting to Wi-Fi");
   if (wifi_ssid != "" && wifi_password != "") {
     WiFi.begin(wifi_ssid, wifi_password);
@@ -209,48 +209,48 @@ void setup() {
     Serial.println("No Wi-Fi credentials found. Starting AP...");
     apModeActive = true;
   }
-  // Запускаем точку доступа
+  // Start access point
   if(apModeActive) {
     switchToAPMode();
   }
 
   timeClient.setTimeOffset(time_offset * 60);  //установка смещения времени относительно UTC в секундах
-  timeClient.begin();                          // Инициализация NTP
-  showClock=timeClient.forceUpdate();          // обновляем показания точного времени
+  timeClient.begin();                          // NTP initialization
+  showClock=timeClient.forceUpdate();          // Update precise time readings
   
   //настройка управления яркостью 
   pinMode(backlightPin, OUTPUT);  // устанваливаем пин продсветки в режим выхода
   analogReadResolution(10);   // настраиваем вход для фоторезистора
   analogSetAttenuation(ADC_0db); // настройка чувствительности
 
-  Wire.begin(SDA_PIN, SCL_PIN); // инициализация i2c
+  Wire.begin(SDA_PIN, SCL_PIN); // I2C initialization
 
-  // Инициализация SCD40
+  // SCD40 initialization
   scd4x.begin(Wire, 0x62);
   scd4x.startPeriodicMeasurement();
 
-  // Инициализация BME280
+  // BME280 initialization
   if (!bme.begin(0x76)) {
     Serial.println("Ошибка BME280!");
   }
 
-  tft.begin();               // Инициализация экрана
-  tft.setRotation(dispRot);  // Ориентация экрана
-  tft.fillScreen(bgColor);   // Заполняем экран чёрным цветом
+  tft.begin();               // Screen initialization
+  tft.setRotation(dispRot);  // Screen orientation
+  tft.fillScreen(bgColor);   // Fill screen with black color
 
   // Вывод изображения, хранящегося в PROGMEM
   // Преобразуем массив из PROGMEM в uint16_t*
   const uint16_t *img = (const uint16_t*)template6;
   tft.pushImage(0, 0, TEMPLATE6_WIDTH, TEMPLATE6_HEIGHT, img);  // Вывод изображения в координатах (0,0)
 
-  // Подключение к MQTT
+  // MQTT connection
   client.begin(mqtt_server.c_str(), mqtt_port, net);
   client.onMessage(messageReceived);
   client.setWill("homeassistant/sensor/esp32_sensor/availability", "offline", true, 1);
   connectMQTT();
 
-  publishDeviceDiscovery();      // Отправка конфигурации сенсоров
-  mqttFail = !client.connected(); // флаг для отображения статуса - проверка статуса подключения  
+  publishDeviceDiscovery();      // Send sensor configuration
+  mqttFail = !client.connected(); // Flag for displaying status - check connection status  
   if (!SPIFFS.begin()) {  // <-- Add this to ensure SPIFFS is ready
     Serial.println("Failed to mount file system");
     return;
@@ -288,7 +288,7 @@ void setup() {
   server.on("/save", HTTP_POST, handleSave);
   server.begin();
 
-  showNetworks();    // показываем статусы wifi, ntp, mqtt
+  showNetworks();    // Show Wi-Fi, NTP, MQTT statuses
 }
 
 void loop() {
@@ -410,7 +410,7 @@ void loop() {
 // тут выполняется код, не зависящий от вывода на экран
   server.handleClient();  //слушаем web-сервер
 
-  mqttFail = !client.connected(); // флаг для отображения статуса - проверка статуса подключения  
+  mqttFail = !client.connected(); // Flag for displaying status - check connection status  
   if (mqttFail) connectMQTT();
   
   client.loop();      // слушаем MQTT-брокера и отправляем пакеты Time-Alive
@@ -631,23 +631,6 @@ void handleRoot() {
   if (htmlFile) {
       String htmlContent = htmlFile.readString();
       htmlFile.close();
-
-      // Inject actual values into the placeholders
-      htmlContent.replace("{{wifi_ssid}}", wifi_ssid);
-      htmlContent.replace("{{wifi_password}}", wifi_password);
-      htmlContent.replace("{{mqtt_server}}", mqtt_server);
-      htmlContent.replace("{{mqtt_port}}", String(mqtt_port));
-      htmlContent.replace("{{mqtt_username}}", mqtt_username);
-      htmlContent.replace("{{mqtt_password}}", mqtt_password);
-      htmlContent.replace("{{interval_MQTT}}", String(interval_MQTT));
-      htmlContent.replace("{{ThresholdTemp}}", String(ThresholdTemp));
-      htmlContent.replace("{{ThresholdHumidity}}", String(ThresholdHumidity));
-      htmlContent.replace("{{ThresholdPressure}}", String(ThresholdPressure));
-      htmlContent.replace("{{ThresholdAirQuality}}", String(ThresholdAirQuality));
-      htmlContent.replace("{{time_offset}}", String(time_offset));
-      htmlContent.replace("{{interval_graph}}", String(interval_graph));
-      htmlContent.replace("{{dispRot}}", String(dispRot));
-
       server.send(200, "text/html", htmlContent);
   } else {
       server.send(404, "text/plain", "File Not Found");
