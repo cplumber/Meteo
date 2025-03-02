@@ -11,6 +11,7 @@ This project is designed to work with the **ESP32** and uses the built-in touchs
     * [SCD40](https://sensirion.com/products/catalog/SCD40)
 
   The sensors are connected via the I2C interface.
+  
 
 ## Features
 - Reads data from BME280 and SCD40 sensors.
@@ -135,6 +136,11 @@ I2C lines require pull-up resistors to operate correctly.
 5. Configure the Wi-Fi settings, MQTT parameters, data storage duration, and MQTT message sending intervals through the web interface.
 6. After the configuration is complete, the device will reboot and connect to the configured Wi-Fi network.
 7. The device's IP address will continue to be shown on the screen and can be used for further access to the web interface.
+
+
+## References
+[Programming ESP32 with Cheap Yellow Display in VS Code](https://randomnerdtutorials.com/programming-esp32-cyd-cheap-yellow-display-vs-code/)
+
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE.md](LICENSE.md) file for details.
